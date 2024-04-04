@@ -1,0 +1,22 @@
+from tqdm import tqdm
+import torch
+import numpy as np
+from src.utilities.dataloader_generator import generate_dataloader
+
+
+@torch.no_grad()
+def calculate_model_accuracy(model, dataset, batch_size=64):
+    device = torch.device("cuda:0" if torch.cuda.is_available() else "cpu")
+    count = 0
+    model.eval()
+    model.to(device)
+    for x, label in tqdm(generate_dataloader(dataset, batch_size=batch_size, shuffle=False)):
+        x = x.to(device)
+        y = model(x)
+        y = y.cpu()
+        y = np.argmax(y.detach().numpy(), 1)
+        print(x.shape, label, y)
+        return
+        count += np.sum(y == label.numpy())
+    accuracy = 1.*count/len(dataset)
+    return accuracy
