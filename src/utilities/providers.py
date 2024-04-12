@@ -1,0 +1,1 @@
+PROVIDERS = ['CUDAExecutionProvider', 'CPUExecutionProvider']
