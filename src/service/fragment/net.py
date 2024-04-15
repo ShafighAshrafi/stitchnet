@@ -1,13 +1,54 @@
+import os
 import torch
+import hashlib
+import traceback
 import numpy as np
 from tqdm import tqdm
 import onnxruntime as ort
 from collections import defaultdict
+import onnx.numpy_helper as numpy_helper
 from onnx_tool import create_ndarray_f32
 from src.utilities.providers import PROVIDERS
-from src.utilities.change_model_layers_dimension import change_layers_dimension
 from src.utilities.get_score import get_score
+from src.utilities.replace_w import replace_w
+from src.utilities.replace_ws import replace_ws
+from skl2onnx.helpers.onnx_helper import save_onnx_model
+from src.utilities.get_input_nodes import get_input_nodes
+from src.utilities.change_model_layers_dimension import change_layers_dimension
+from src.utilities.get_macs import get_macs_params
+from src.utilities.visual import draw_net
 
+
+
+def get_numpy_matrix(model_onnx, name):
+    [tensor] = [t for t in model_onnx.graph.initializer if t.name == name]
+    w = numpy_helper.to_array(tensor)
+    return w
+
+def execute_fragments(fragments, x):
+    '''get outputs of all fragments'''
+    outputs = [None]*len(fragments)
+    
+    for i,f in enumerate(fragments):
+        change_layers_dimension(f)
+        # print('execute_fragments', 'change input', f.graph.input)
+        ort_sess = ort.InferenceSession(f.SerializeToString(), providers=PROVIDERS)
+        inputs = {}
+        # print("exec", "input", f.graph.input[0].name, f.graph.input[0].type)
+        # print(x.shape)
+        if isinstance(x, torch.Tensor):
+            x = x.numpy()
+        inputs[f.graph.input[0].name] = x
+        o = ort_sess.run(None, inputs)
+        x = o[0]
+        outputs[i] = x
+    return outputs
+
+
+def hash_model(f):
+    change_layers_dimension(f)
+    hashf = hashlib.md5(f.SerializeToString()).hexdigest()
+    return hashf
 
 class Net:
     def __init__(self, fragments, nId=None):
@@ -26,9 +67,9 @@ class Net:
         self.knn = None
         self.p = None
     
-    # def get_macs_params(self):
-    #     macs,params = get_macs_params(self[0])
-    #     return dict(macs=macs,params=params)
+    def get_macs_params(self):
+        macs,params = get_macs_params(self[0])
+        return dict(macs=macs,params=params)
 
     # def fit(self, train_dataset, label_column="label", batch_size=32):
     #     label = label_column
@@ -99,14 +140,14 @@ class Net:
     #             }]
     #     return result
     
-    # def evaluate_dataset(self, dataset_val, label_column='labels'):
-    #     result = self(dataset_val['pixel_values'])
-    #     total = len(dataset_val)
-    #     count = 0
-    #     for r,t in zip(result,dataset_val['labels']):
-    #         if r['label']==t:
-    #             count+=1
-    #     return {'accuracy': 1.*count/total}  
+    def evaluate_dataset(self, dataset_val, label_column='labels'):
+        result = self(dataset_val['pixel_values'])
+        total = len(dataset_val)
+        count = 0
+        for r,t in zip(result,dataset_val['labels']):
+            if r['label']==t:
+                count+=1
+        return {'accuracy': 1.*count/total}  
         
     # def predict_files(self, filenames):
     #     if not isinstance(filenames, list):
@@ -145,68 +186,69 @@ class Net:
     #         }]
     #     return result
         
-    # def draw_svg(self, path):
-    #     draw_net(self, path)
+    def draw_svg(self, path):
+        draw_net(self, path)
         
-    # def save_onnx(self, path):
-    #     self.save(path)
+    def save_onnx(self, path):
+        self.save(path)
         
-    # def save(self, path):
-    #     # print('len(self.fragments)', len(self.fragments))
-    #     if len(self.fragments) == 1:
-    #         print('saving to', f'{path}.onnx')
-    #         save_onnx_model(self.fragments[0], f'{path}.onnx')
-    #     else:
-    #         os.makedirs(os.path.dirname(path), exist_ok=True)
-    #         for i,fragment in enumerate(self.fragments):
-    #             save_onnx_model(fragment, f'{path}_{i:03}.onnx')
+    def save(self, path):
+        # print('len(self.fragments)', len(self.fragments))
+        if len(self.fragments) == 1:
+            print('saving to', f'{path}.onnx')
+            save_onnx_model(self.fragments[0], f'{path}.onnx')
+        else:
+            os.makedirs(os.path.dirname(path), exist_ok=True)
+            for i,fragment in enumerate(self.fragments):
+                save_onnx_model(fragment, f'{path}_{i:03}.onnx')
         
-    # def get_id(self):
-    #     return self.id
+    def get_id(self):
+        return self.id
+    
     def get_scores(self, x1, data, scoring_method='CKA'):
-        tX = torch.from_numpy(x1)
+        tensor_x = torch.from_numpy(x1)
         score_fragments = []
-        for i,f in enumerate(self.fragments[:-1]):
-            x2 = self.get_output(f,data)
+        for index, fragment in enumerate(self.fragments[:-1]):
+            x2 = self.get_output(fragment, data)
             tY = torch.from_numpy(x2)
-            score = get_score(tX, tY, min(tX.shape[1],tY.shape[1])*10, scoring_method)
-            score_fragments.append((score, self.fragmentCs[i+1]))
+            score = get_score(tensor_x, tY, min(tensor_x.shape[1],tY.shape[1])*10, scoring_method)
+            score_fragments.append((score, self.fragmentCs[index+1]))
         return score_fragments
     
-    # def evaluate(self, x):
-    #     if isinstance(x, torch.Tensor):
-    #         x = x.numpy()
-    #     hashx = hashlib.md5(x.tobytes()).hexdigest()
-    #     os = execute_fragments(self.fragments, x)
-    #     for f,o in zip(self.fragments,os):
-    #         hashf = hash_model(f)
-    #         # print(hashf, hashx)
-    #         self.results[hashf][hashx] = o
+    def evaluate(self, x):
+        if isinstance(x, torch.Tensor):
+            x = x.numpy()
+        hashx = hashlib.md5(x.tobytes()).hexdigest()
+        os = execute_fragments(self.fragments, x)
+        for f,o in zip(self.fragments,os):
+            hashf = hash_model(f)
+            # print(hashf, hashx)
+            self.results[hashf][hashx] = o
     
-    # def get_outputs(self, x):
-    #     return [self.get_output(f,x) for f in self.fragments]
+    def get_outputs(self, x):
+        return [self.get_output(f,x) for f in self.fragments]
     
-    # def get_output(self, f, x):
-    #     hashf = hash_model(f)
-    #     # print('hashf', hashf)
-    #     if isinstance(x, torch.Tensor):
-    #         x = x.numpy()
-    #     hashx = hashlib.md5(x.tobytes()).hexdigest()
-    #     if hashx in self.results[hashf]:
-    #         return self.results[hashf][hashx]
-    #     else:
-    #         self.evaluate(x)
-    #         return self.results[hashf][hashx]
+    def get_output(self, f, x):
+        hashf = hash_model(f)
+        # print('hashf', hashf)
+        if isinstance(x, torch.Tensor):
+            x = x.numpy()
+        hashx = hashlib.md5(x.tobytes()).hexdigest()
+        if hashx in self.results[hashf]:
+            return self.results[hashf][hashx]
+        else:
+            self.evaluate(x)
+            return self.results[hashf][hashx]
         
-    # def get_input(self, f, x):
-    #     curr = None
-    #     for nf in self.fragments:
-    #         prev = curr
-    #         curr = nf
-    #         if hash_model(nf) == hash_model(f):
-    #             if prev is None:
-    #                 return x
-    #             return self.get_output(prev, x)
+    def get_input(self, f, x):
+        curr = None
+        for nf in self.fragments:
+            prev = curr
+            curr = nf
+            if hash_model(nf) == hash_model(f):
+                if prev is None:
+                    return x
+                return self.get_output(prev, x)
             
     def __iter__(self):
         self.index = 0
@@ -250,30 +292,30 @@ class Fragment:
     #     w = get_numpy_matrix(f, name)
     #     return np.copy(w)
     
-    # def get_ws(self):
-    #     f = self.fragment
+    def get_ws(self):
+        f = self.fragment
         
-    #     nodes = get_input_nodes(f)
+        nodes = get_input_nodes(f)
         
-    #     ws = []
-    #     for node in nodes:
-    #         name = node.input[1]
-    #         w = get_numpy_matrix(f, name)
-    #         ws.append(np.copy(w))
-    #     return ws
+        ws = []
+        for node in nodes:
+            name = node.input[1]
+            w = get_numpy_matrix(f, name)
+            ws.append(np.copy(w))
+        return ws
     
-    # def replace_w(self, w, i=0):
-    #     f = self.fragment
-    #     nodes = get_input_nodes(f)
-    #     node = nodes[i]
-    #     name = node.input[1]
-    #     return replace_w(f, name, w)
+    def replace_w(self, w, i=0):
+        f = self.fragment
+        nodes = get_input_nodes(f)
+        node = nodes[i]
+        name = node.input[1]
+        return replace_w(f, name, w)
     
-    # def replace_ws(self, ws):
-    #     f = self.fragment
-    #     nodes = get_input_nodes(f)
-    #     names = [node.input[1] for node in nodes]
-    #     return replace_ws(f, names, ws)
+    def replace_ws(self, ws):
+        f = self.fragment
+        nodes = get_input_nodes(f)
+        names = [node.input[1] for node in nodes]
+        return replace_ws(f, names, ws)
 
 
 # def get_macs_params(fragment: Fragment, inputName=None, inputSize=(1, 3, 224, 224)):

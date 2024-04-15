@@ -1,9 +1,9 @@
 import operator
-from functools import reduce
 import traceback
-from src.utilities.change_model_name import change_model_name
+from functools import reduce
 from src.utilities.get_input_nodes import get_input_nodes
 from src.service.fragment.split_model import split_model_at
+from src.utilities.change_model_name import change_model_name
 from src.service.fragment.find_conv_layers import find_conv_inputs
 from src.utilities.change_model_layers_dimension import change_layers_dimension
 
