@@ -7,7 +7,7 @@ from src.utilities.get_accuracy import accuracy_score_net
 
 
 class Report:
-    def __init__(self, bs=128, fname=f'./_results_with_finetune/result_val.txt', mode='a'):
+    def __init__(self, bs=128, fname=f'../_results_with_finetune/result_val.txt', mode='a'):
         os.makedirs(os.path.dirname(fname), exist_ok = True)
         self.fname = fname
         self.mode = mode
