@@ -4,7 +4,6 @@ from torch.autograd import Variable
 
 
 def train_w(device, acts1, acts2, Winit, nepoch=1, batch_size=1024, learning_rate=1e-6, momentum=0.9):
-    dtype = acts1.dtype
     acts1 = acts1.to(device)
     acts2 = acts2.to(device)
     Winit = Winit.to(device)
@@ -12,7 +11,7 @@ def train_w(device, acts1, acts2, Winit, nepoch=1, batch_size=1024, learning_rat
     optimizer = torch.optim.SGD([W], lr=learning_rate, momentum=momentum)
     dset = torch.utils.data.TensorDataset(acts1,acts2)
     prev_loss = None
-    for epoch in range(nepoch):
+    for _ in range(nepoch):
         running_loss = 0
         for x,y in torch.utils.data.DataLoader(dset, shuffle=True, batch_size=batch_size, drop_last=True, num_workers=0):
             optimizer.zero_grad()

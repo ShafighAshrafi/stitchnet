@@ -3,17 +3,19 @@ import copy
 import torch
 import operator
 import traceback
+import numpy as np
 import onnxoptimizer
 from onnx import helper
 from functools import reduce
+from src.service.fragment.net import Fragment
 from src.utilities.get_input_nodes import get_input_nodes
-from src.utilities.adjust_weights.adjust_w import adjust_w
+from src.utilities.adjust_weights.adjust_w import adjust_weight
 from src.utilities.get_output_nodes import get_output_nodes
 from src.utilities.create_onnx_model import create_onnx_model
 from src.utilities.change_model_layers_dimension import change_layers_dimension
 
 
-def stitch_fragments(fragment1, fragment2, data):
+def stitch_fragments(fragment1: Fragment, fragment2: Fragment, data: np.ndarray):
     # list_ops(fragment1.fragment)
     # fragment1 = copy.deepcopy(fragment1)
     # fragment2 = copy.deepcopy(fragment2)
@@ -28,19 +30,19 @@ def stitch_fragments(fragment1, fragment2, data):
         # print('-------fragment2 ops-------')
         # list_ops(fragment2.fragment)
         raise e
-    tX = torch.from_numpy(x1)
-    tY = torch.from_numpy(x2)
+    tensor_x = torch.from_numpy(x1)
+    tensor_y = torch.from_numpy(x2)
     # score = get_score(tX, tY)
     # if score < 0.5:
     #     return None
     # print('score', score)
 
-    ws = fragment2.get_ws()
-    nws = []
-    for i, w in enumerate(ws):
-        nw = adjust_w(tX, tY, w)
-        nws.append(nw)
-    newFragment = fragment2.replace_ws(nws)
+    weights = fragment2.get_weights()
+    new_weights = []
+    for index, weight in enumerate(weights):
+        new_weight = adjust_weight(tensor_x, tensor_y, weight)
+        new_weights.append(new_weight)
+    newFragment = fragment2.replace_ws(new_weights)
     # newFragment = fragment2.fragment
 
     oldinputname = newFragment.graph.input[0].name
@@ -48,9 +50,9 @@ def stitch_fragments(fragment1, fragment2, data):
 
     # find and replace all the input name
     for n in newFragment.graph.node:
-        for i, inp in enumerate(n.input):
+        for index, inp in enumerate(n.input):
             if inp == oldinputname:
-                n.input[i] = newname
+                n.input[index] = newname
     newFragment.graph.input[0].name = newname
 
     # begin stitching
@@ -74,7 +76,7 @@ def stitch_fragments(fragment1, fragment2, data):
         kwargs[att.name] = helper.get_attribute_value(att)
 
     newNodeOutName = newname
-    if tX.ndim == 4 and tY.ndim == 2:
+    if tensor_x.ndim == 4 and tensor_y.ndim == 2:
         newNodeOutName += "_pool"
         poolNode = helper.make_node(
             'GlobalAveragePool',
@@ -111,7 +113,7 @@ def stitch_fragments(fragment1, fragment2, data):
     # )
 
     nodes.append(newNode)
-    if tX.ndim == 4 and tY.ndim == 2:
+    if tensor_x.ndim == 4 and tensor_y.ndim == 2:
         nodes.append(poolNode)
         nodes.append(flatNode)
 
@@ -189,7 +191,7 @@ def stitch_fragments(fragment1, fragment2, data):
         initializer.append(init)
 
     for node in newnodes:
-        for i, inp in enumerate(node.input):
+        for index, inp in enumerate(node.input):
             if inp in existingNames:
                 # print('existingNames', inp)
                 if inp not in newinitname:
@@ -200,7 +202,7 @@ def stitch_fragments(fragment1, fragment2, data):
 
                     # node.input[i] = newNames[inp]
 
-        for i, out in enumerate(node.output):
+        for index, out in enumerate(node.output):
             if out in existingNames:
                 # print('existingNames', out)
                 if out not in newinitname:
@@ -215,12 +217,12 @@ def stitch_fragments(fragment1, fragment2, data):
 
     # replace input output with new names
     for node in newnodes:
-        for i, inp in enumerate(node.input):
+        for index, inp in enumerate(node.input):
             if inp in newinitname:
-                node.input[i] = newinitname[inp]
-        for i, out in enumerate(node.output):
+                node.input[index] = newinitname[inp]
+        for index, out in enumerate(node.output):
             if out in newinitname:
-                node.output[i] = newinitname[out]
+                node.output[index] = newinitname[out]
         if 'timestamp' not in node.name:
             node.name += "_timestamp_"+str((time.time()))
         else:

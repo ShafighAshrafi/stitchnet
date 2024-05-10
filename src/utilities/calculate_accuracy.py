@@ -10,7 +10,7 @@ def calculate_model_accuracy(model, dataset, batch_size=64):
     count = 0
     model.eval()
     model.to(device)
-    for x, label in tqdm(generate_dataloader(dataset, batch_size=batch_size, shuffle=False)):
+    for x, label in tqdm(generate_dataloader(dataset, batch_size=batch_size, shuffle=False), position=0, leave=True):
         x = x.to(device)
         y = model(x)
         y = y.cpu()

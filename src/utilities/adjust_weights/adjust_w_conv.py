@@ -4,7 +4,7 @@ from src.utilities.sample_index import sample_index
 from src.utilities.adjust_weights.train_w import train_w
 
 
-def adjust_w_conv(tX, tY, w):
+def adjust_conv_weight(tX, tY, w):
     device = Device().get_device()
     if tY.shape[-2]!=tX.shape[-2] and tY.shape[-1]!=tX.shape[-1]:
         up = torch.nn.UpsamplingBilinear2d((tY.shape[-2],tY.shape[-1]))

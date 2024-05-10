@@ -1,26 +1,23 @@
 import numpy as np
 from tqdm import tqdm
 import onnxruntime as ort
+from src.service.fragment.net import Net
 from src.utilities.providers import PROVIDERS
-from src.utilities.load_dataset import load_dataset
-from src.utilities.dataloader_generator import generate_dataloader
 from src.utilities.change_model_layers_dimension import change_layers_dimension
 
 
-def accuracy_score_net(net, dataset, bs=64):
+def accuracy_score_net(net: Net, dataset, bs=64):
     assert len(net)==1, 'stitchnet should have only one fragment'
     count = 0
     fragmentC = net[0]
     change_layers_dimension(fragmentC.fragment)
     ort_sess1 = ort.InferenceSession(fragmentC.fragment.SerializeToString(), providers=PROVIDERS)
     
-    for x,t in tqdm(generate_dataloader(load_dataset(), batch_size=bs)):
+    for x, t in tqdm(dataset, position=0, leave=True):
         data = x.numpy()
 
         # y = evalulate_stitchnet(net, x)
-        inputs = {}
-        inputs[fragmentC.fragment.graph.input[0].name] = data
-        outputs = ort_sess1.run(None, inputs)
+        outputs = ort_sess1.run(None, {fragmentC.fragment.graph.input[0].name: data})
         y = outputs[0]
         # y = ys[0]
         # print('y.shape', y.shape)

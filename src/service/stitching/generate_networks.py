@@ -1,8 +1,11 @@
 import numpy as np
+from typing import List
+from src.service.fragment.net import Net
+from src.utilities.score_mapper import ScoreMapper
 from src.service.stitching.recursive_stitching import recursive_stitching
 
  
-def generate_networks(nets, scoreMapper, data, threshold=0.9, totalThreshold=0.5, maxDepth=10, sample=False, K=None):
+def generate_networks(nets: List[Net], scoreMapper: ScoreMapper, data, threshold=0.9, totalThreshold=0.5, maxDepth=10, sample=False, K=None):
     fragments = [f for net in nets for f in net]
     starts = [f for f in fragments if f.fragment.graph.name == 'start']
     ends = [f for f in fragments if f.fragment.graph.name == 'end']
