@@ -8,7 +8,7 @@ def graph_profile(onnxgraph, dynamic_shapes=None):
     graph = Graph(onnxgraph, mcfg)
     graph.shape_infer(dynamic_shapes)
     graph.profile()
-    return graph.macs, graph.params
+    return graph.macs[0], graph.params
 
 
 def get_macs_params(fragment, inputName=None, inputSize=(1, 3, 224, 224)):

@@ -166,6 +166,7 @@ src/dataset/main_dataset/test/
 *.onnx
 *.csv
 _model/
+_results/
 _results_with_finetune/
 _results_without_finetune/
 .virtual_documents/
