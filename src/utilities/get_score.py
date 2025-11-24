@@ -1,15 +1,16 @@
 import torch
-from src.utilities.get_device import Device
-from src.utilities.scoring_functions.pt_R2 import pt_R2
-from src.utilities.scoring_functions.CKA import linear_CKA
+
+from utilities.get_device import Device
+from utilities.scoring_functions.CKA import linear_CKA
+from utilities.scoring_functions.pt_R2 import pt_R2
 
 
 @torch.no_grad()
-def get_score(X, Y, num_samples=1000, scoring_method='CKA'):
+def get_score(X, Y, num_samples=1000, scoring_method="CKA"):
     device = Device().get_device()
-    if scoring_method == 'R2':
+    if scoring_method == "R2":
         score_function = pt_R2
-    if scoring_method == 'CKA':
+    if scoring_method == "CKA":
         score_function = linear_CKA
 
     # X = torch.from_numpy(X)

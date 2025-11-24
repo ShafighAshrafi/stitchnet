@@ -1,11 +1,13 @@
-
-import onnxoptimizer
 from onnx import ValueInfoProto
+from onnx.helper import make_graph, make_model, make_tensor_value_info, set_model_props
 from skl2onnx.helpers.onnx_helper import enumerate_model_node_outputs
-from onnx.helper import make_tensor_value_info, make_graph, make_model, set_model_props
+
+from onnxoptimizer import optimize
 
 
-def select_model_inputs_outputs2(model, outputs=None, inputs=None, inputs_types=None, inputs_shapes=None, name=None):
+def select_model_inputs_outputs2(
+    model, outputs=None, inputs=None, inputs_types=None, inputs_shapes=None, name=None
+):
     """
     Takes a model and changes its outputs.
 
@@ -32,7 +34,7 @@ def select_model_inputs_outputs2(model, outputs=None, inputs=None, inputs_types=
         inputs_shapes = []
     elif not isinstance(inputs_shapes, list):
         inputs_shapes = [inputs_shapes]
-        
+
     mark_nodes = {}
     for out in enumerate_model_node_outputs(model):
         mark_nodes[out] = 0
@@ -42,12 +44,12 @@ def select_model_inputs_outputs2(model, outputs=None, inputs=None, inputs_types=
         if out not in mark_nodes:
             raise ValueError(f"Output '{out}' not found in model.")
         mark_nodes[out] = 1
-    
+
     mark_input_nodes = {}
     if inputs is not None:
         for inp in inputs:
             mark_input_nodes[inp] = 1
-        
+
     nodes = model.graph.node[::-1]
     mark_operation = {}
     for node in nodes:
@@ -81,7 +83,7 @@ def select_model_inputs_outputs2(model, outputs=None, inputs=None, inputs_types=
                     continue
                 mark_nodes[inp] = 1
                 nb += 1
-        
+
     # All nodes verifies mark_op[node.name] == 1
     keep_nodes = [node for node in nodes if mark_operation[node.name] == 1]
     keep_nodes = keep_nodes[::-1]
@@ -91,7 +93,7 @@ def select_model_inputs_outputs2(model, outputs=None, inputs=None, inputs_types=
         value_info = ValueInfoProto()
         value_info.name = out
         var_out.append(value_info)
-            
+
     if inputs is None:
         var_int = model.graph.input
     else:
@@ -99,12 +101,10 @@ def select_model_inputs_outputs2(model, outputs=None, inputs=None, inputs_types=
         for i, inp in enumerate(inputs):
             ttype = inputs_types[i]
             tshape = inputs_shapes[i]
-            var_int.append(make_tensor_value_info(inp, 
-                                  ttype, tshape))
+            var_int.append(make_tensor_value_info(inp, ttype, tshape))
     if name is None:
         name = model.graph.name
-    graph = make_graph(keep_nodes, name, var_int,
-                       var_out, model.graph.initializer)
+    graph = make_graph(keep_nodes, name, var_int, var_out, model.graph.initializer)
     onnx_model = make_model(graph)
     onnx_model.ir_version = model.ir_version
     onnx_model.producer_name = model.producer_name
@@ -126,7 +126,7 @@ def select_model_inputs_outputs2(model, outputs=None, inputs=None, inputs_types=
         op_set = onnx_model.opset_import.add()
         op_set.domain = oimp.domain
         op_set.version = oimp.version
-        
+
     # passes = ["extract_constant_to_initializer", "eliminate_unused_initializer"]
     passes = ["eliminate_unused_initializer"]
     # print('inputname', [n.name for n in onnx_model.graph.input], 'inputs', inputs)
@@ -134,7 +134,7 @@ def select_model_inputs_outputs2(model, outputs=None, inputs=None, inputs_types=
     # onnx_model = onnx.shape_inference.infer_shapes(onnx_model)
     # save_onnx_model(onnx_model, 'tmp.onnx')
     # onnx_model = load_onnx_model('tmp.onnx')
-    optimized_model = onnxoptimizer.optimize(onnx_model, passes)
+    optimized_model = optimize(onnx_model, passes)
     # except Exception as e:
     #     from skl2onnx.helpers.onnx_helper import save_onnx_model
     #     import string

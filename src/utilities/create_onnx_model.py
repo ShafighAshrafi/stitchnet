@@ -1,9 +1,12 @@
 import onnx
-import onnxoptimizer
-from onnx.helper import make_graph,make_model
+from onnx.helper import make_graph, make_model
+
+from onnxoptimizer import optimize
 
 
-def create_onnx_model(model, nodes=None, name=None, inputs=None, outputs=None, initializer=None):
+def create_onnx_model(
+    model, nodes=None, name=None, inputs=None, outputs=None, initializer=None
+):
     if nodes is None:
         nodes = model.graph.node
     if name is None:
@@ -14,10 +17,9 @@ def create_onnx_model(model, nodes=None, name=None, inputs=None, outputs=None, i
         outputs = model.graph.output
     if initializer is None:
         initializer = model.graph.initializer
-    
-    graph = make_graph(nodes, name, inputs,
-                       outputs, initializer)
-    
+
+    graph = make_graph(nodes, name, inputs, outputs, initializer)
+
     onnx_model = make_model(graph)
     onnx_model.ir_version = model.ir_version
     onnx_model.producer_name = model.producer_name
@@ -35,9 +37,9 @@ def create_onnx_model(model, nodes=None, name=None, inputs=None, outputs=None, i
         op_set = onnx_model.opset_import.add()
         op_set.domain = oimp.domain
         op_set.version = oimp.version
-        
+
     passes = ["extract_constant_to_initializer", "eliminate_unused_initializer"]
-    optimized_model = onnxoptimizer.optimize(onnx_model, passes)
+    optimized_model = optimize(onnx_model, passes)
     # optimized_model = onnx_model
 
     return optimized_model

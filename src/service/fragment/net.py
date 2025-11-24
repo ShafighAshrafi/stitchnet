@@ -1,20 +1,23 @@
-import os
-import torch
 import hashlib
-import numpy as np
-from typing import List
-import onnxruntime as ort
+import os
 from collections import defaultdict
+from typing import List
+
+import numpy as np
 import onnx.numpy_helper as numpy_helper
-from src.utilities.visual import draw_net
-from src.utilities.providers import PROVIDERS
-from src.utilities.get_score import get_score
-from src.utilities.replace_w import replace_w
-from src.utilities.replace_ws import replace_ws
-from src.utilities.get_macs import get_macs_params
+import onnxruntime as ort
+import torch
 from skl2onnx.helpers.onnx_helper import save_onnx_model
-from src.utilities.get_input_nodes import get_input_nodes
-from src.utilities.change_model_layers_dimension import change_layers_dimension
+
+from utilities.change_model_layers_dimension import change_layers_dimension
+from utilities.fix_reshape_batch_dimension import fix_reshape_batch_dimension
+from utilities.get_input_nodes import get_input_nodes
+from utilities.get_macs import get_macs_params
+from utilities.get_score import get_score
+from utilities.providers import PROVIDERS
+from utilities.replace_w import replace_w
+from utilities.replace_ws import replace_ws
+from utilities.visual import draw_net
 
 
 def get_numpy_matrix(model_onnx, name):
@@ -23,14 +26,16 @@ def get_numpy_matrix(model_onnx, name):
 
 
 def execute_fragments(fragments: List["Fragment"], x):
-    '''get outputs of all fragments'''
-    outputs = [None]*len(fragments)
+    """get outputs of all fragments"""
+    outputs = [None] * len(fragments)
 
     for index, fragment in enumerate(fragments):
         change_layers_dimension(fragment)
+        fragment = fix_reshape_batch_dimension(fragment)
         # print('execute_fragments', 'change input', f.graph.input)
         ort_session = ort.InferenceSession(
-            fragment.SerializeToString(), providers=PROVIDERS)
+            fragment.SerializeToString(), providers=PROVIDERS
+        )
         # print("exec", "input", f.graph.input[0].name, f.graph.input[0].type)
         # print(x.shape)
         if isinstance(x, torch.Tensor):
@@ -57,6 +62,8 @@ class Net:
         fragmentCs = []
         for index, fragment in enumerate(fragments):
             change_layers_dimension(fragment)
+            fragment = fix_reshape_batch_dimension(fragment)
+            fragments[index] = fragment  # Update the original list
             fragmentC = Fragment(fragment, self, index)
             fragmentCs.append(fragmentC)
         self.fragmentCs = fragmentCs
@@ -137,14 +144,14 @@ class Net:
     #             }]
     #     return result
 
-    def evaluate_dataset(self, dataset_val, label_column='labels'):
-        result = self(dataset_val['pixel_values'])
+    def evaluate_dataset(self, dataset_val, label_column="labels"):
+        result = self(dataset_val["pixel_values"])
         total = len(dataset_val)
         count = 0
-        for r, t in zip(result, dataset_val['labels']):
-            if r['label'] == t:
+        for r, t in zip(result, dataset_val["labels"]):
+            if r["label"] == t:
                 count += 1
-        return {'accuracy': 1.*count/total}
+        return {"accuracy": 1.0 * count / total}
 
     # def predict_files(self, filenames):
     #     if not isinstance(filenames, list):
@@ -192,25 +199,29 @@ class Net:
     def save(self, path):
         # print('len(self.fragments)', len(self.fragments))
         if len(self.fragments) == 1:
-            print('saving to', f'{path}.onnx')
-            save_onnx_model(self.fragments[0], f'{path}.onnx')
+            print("saving to", f"{path}.onnx")
+            save_onnx_model(self.fragments[0], f"{path}.onnx")
         else:
             os.makedirs(os.path.dirname(path), exist_ok=True)
             for i, fragment in enumerate(self.fragments):
-                save_onnx_model(fragment, f'{path}_{i:03}.onnx')
+                save_onnx_model(fragment, f"{path}_{i:03}.onnx")
 
     def get_id(self):
         return self.id
 
-    def get_scores(self, x1, data, scoring_method='CKA'):
+    def get_scores(self, x1, data, scoring_method="CKA"):
         tensor_x = torch.from_numpy(x1)
         score_fragments = []
         for index, fragment in enumerate(self.fragments[:-1]):
             x2 = self.get_output(fragment, data)
             tensor_y = torch.from_numpy(x2)
-            score = get_score(tensor_x, tensor_y, min(
-                tensor_x.shape[1], tensor_y.shape[1])*10, scoring_method)
-            score_fragments.append((score, self.fragmentCs[index+1]))
+            score = get_score(
+                tensor_x,
+                tensor_y,
+                min(tensor_x.shape[1], tensor_y.shape[1]) * 10,
+                scoring_method,
+            )
+            score_fragments.append((score, self.fragmentCs[index + 1]))
         return score_fragments
 
     def evaluate(self, x):
@@ -250,6 +261,7 @@ class Net:
     def __iter__(self):
         self.index = 0
         return iter(self.fragmentCs)
+
     # def __next__(self):
     #     if self.index < len(self):
     #         item = self.fragmentCs[self.index]

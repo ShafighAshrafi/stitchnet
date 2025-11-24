@@ -1,8 +1,10 @@
-import torch
 import random
+
 import numpy as np
-from src.utilities.load_dataset import load_dataset
-from src.utilities.dataloader_generator import generate_dataloader
+import torch
+
+from utilities.dataloader_generator import generate_dataloader
+from utilities.load_dataset_chest_xray import load_dataset
 
 
 def get_data_score(batch_size=32, includeTarget=False):

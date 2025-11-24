@@ -1,18 +1,20 @@
-import time
 import copy
-import torch
 import operator
+import time
 import traceback
-import numpy as np
-import onnxoptimizer
-from onnx import helper
 from functools import reduce
+
+import numpy as np
+import torch
+from onnx import helper
+
+from onnxoptimizer import optimize
 from src.service.fragment.net import Fragment
-from src.utilities.get_input_nodes import get_input_nodes
 from src.utilities.adjust_weights.adjust_w import adjust_weight
-from src.utilities.get_output_nodes import get_output_nodes
-from src.utilities.create_onnx_model import create_onnx_model
 from src.utilities.change_model_layers_dimension import change_layers_dimension
+from src.utilities.create_onnx_model import create_onnx_model
+from src.utilities.get_input_nodes import get_input_nodes
+from src.utilities.get_output_nodes import get_output_nodes
 
 
 def stitch_fragments(fragment1: Fragment, fragment2: Fragment, data: np.ndarray):
@@ -46,7 +48,7 @@ def stitch_fragments(fragment1: Fragment, fragment2: Fragment, data: np.ndarray)
     # newFragment = fragment2.fragment
 
     oldinputname = newFragment.graph.input[0].name
-    newname = oldinputname+"_timestamp_"+str((time.time()))
+    newname = oldinputname + "_timestamp_" + str((time.time()))
 
     # find and replace all the input name
     for n in newFragment.graph.node:
@@ -79,21 +81,21 @@ def stitch_fragments(fragment1: Fragment, fragment2: Fragment, data: np.ndarray)
     if tensor_x.ndim == 4 and tensor_y.ndim == 2:
         newNodeOutName += "_pool"
         poolNode = helper.make_node(
-            'GlobalAveragePool',
-            inputs=[f'{newNodeOutName}'],
-            outputs=[f'{newNodeOutName}_poolflat'],
+            "GlobalAveragePool",
+            inputs=[f"{newNodeOutName}"],
+            outputs=[f"{newNodeOutName}_poolflat"],
         )
         flatNode = helper.make_node(
-            'Flatten',
-            inputs=[f'{newNodeOutName}_poolflat'],
-            outputs=[f'{newname}'],  # Default value for axis: axis=1
+            "Flatten",
+            inputs=[f"{newNodeOutName}_poolflat"],
+            outputs=[f"{newname}"],  # Default value for axis: axis=1
         )
 
     newNode = helper.make_node(
-        node.op_type,                  # optype
+        node.op_type,  # optype
         node.input,  # inputs
-        [newNodeOutName],               # outputs
-        node.name+"_nodeexit_timestamp_"+str((time.time())),  # name
+        [newNodeOutName],  # outputs
+        node.name + "_nodeexit_timestamp_" + str((time.time())),  # name
         node.doc_string,
         node.domain,
         # mode='constant',        # attributes
@@ -101,7 +103,7 @@ def stitch_fragments(fragment1: Fragment, fragment2: Fragment, data: np.ndarray)
         # doc_string=exitNode.doc_string,
         # domain=exitNode.domain,
         # *node.attribute
-        **kwargs
+        **kwargs,
     )
 
     # newNode = helper.make_node(
@@ -119,9 +121,12 @@ def stitch_fragments(fragment1: Fragment, fragment2: Fragment, data: np.ndarray)
 
     inpnodes = get_input_nodes(newFragment)
     # print('[n.op_type for n in inputnodes]', [n.op_type for n in inpnodes])
-    if len(inpnodes) > 1 and not reduce(operator.and_, ['Conv' == n.op_type for n in inpnodes]):
+    if len(inpnodes) > 1 and not reduce(
+        operator.and_, ["Conv" == n.op_type for n in inpnodes]
+    ):
         raise Exception(
-            "There are more than one inputs to stitch and it is not all going into Conv.")
+            "There are more than one inputs to stitch and it is not all going into Conv."
+        )
 
     if len(inpnodes) == 0:
         # print('len(inpnodes)', len(inpnodes))
@@ -139,10 +144,10 @@ def stitch_fragments(fragment1: Fragment, fragment2: Fragment, data: np.ndarray)
         kwargs[att.name] = helper.get_attribute_value(att)
 
     newNode = helper.make_node(
-        node.op_type,                  # optype
-        [newname]+enterNode.input[1:],  # inputs
-        node.output,               # outputs
-        node.name+"_nodeenter_timestamp_"+str((time.time())),  # name
+        node.op_type,  # optype
+        [newname] + enterNode.input[1:],  # inputs
+        node.output,  # outputs
+        node.name + "_nodeenter_timestamp_" + str((time.time())),  # name
         node.doc_string,
         node.domain,
         # mode='constant',        # attributes
@@ -150,7 +155,7 @@ def stitch_fragments(fragment1: Fragment, fragment2: Fragment, data: np.ndarray)
         # doc_string=exitNode.doc_string,
         # domain=exitNode.domain,
         # *node.attribute
-        **kwargs
+        **kwargs,
     )
 
     # newNode = helper.make_node(
@@ -175,7 +180,7 @@ def stitch_fragments(fragment1: Fragment, fragment2: Fragment, data: np.ndarray)
             # print('skipping...', node.name)
             continue
         node = copy.deepcopy(node)
-        node.name += "_timestamp_"+str((time.time()))
+        node.name += "_timestamp_" + str((time.time()))
         newnodes.append(node)
 
     initializer = []
@@ -186,7 +191,7 @@ def stitch_fragments(fragment1: Fragment, fragment2: Fragment, data: np.ndarray)
     for init in newFragment.graph.initializer:
         init = copy.deepcopy(init)
         oldname = init.name
-        init.name += "_timestamp_"+str((time.time()))
+        init.name += "_timestamp_" + str((time.time()))
         newinitname[oldname] = init.name
         initializer.append(init)
 
@@ -195,8 +200,8 @@ def stitch_fragments(fragment1: Fragment, fragment2: Fragment, data: np.ndarray)
             if inp in existingNames:
                 # print('existingNames', inp)
                 if inp not in newinitname:
-                    if 'timestamp' not in inp:
-                        newinitname[inp] = inp+"_timestamp_"+str((time.time()))
+                    if "timestamp" not in inp:
+                        newinitname[inp] = inp + "_timestamp_" + str((time.time()))
                     # else:
                     #     newinitname[inp] = inp.split('_')[0]+"_timestamp_"+str((time.time()))
 
@@ -206,8 +211,8 @@ def stitch_fragments(fragment1: Fragment, fragment2: Fragment, data: np.ndarray)
             if out in existingNames:
                 # print('existingNames', out)
                 if out not in newinitname:
-                    if 'timestamp' not in out:
-                        newinitname[out] = out+"_timestamp_"+str((time.time()))
+                    if "timestamp" not in out:
+                        newinitname[out] = out + "_timestamp_" + str((time.time()))
                     # else:
                     #     newinitname[out] = out.split('_')[0]+"_timestamp_"+str((time.time()))
                     # node.output[i] = newNames[out]
@@ -223,11 +228,10 @@ def stitch_fragments(fragment1: Fragment, fragment2: Fragment, data: np.ndarray)
         for index, out in enumerate(node.output):
             if out in newinitname:
                 node.output[index] = newinitname[out]
-        if 'timestamp' not in node.name:
-            node.name += "_timestamp_"+str((time.time()))
+        if "timestamp" not in node.name:
+            node.name += "_timestamp_" + str((time.time()))
         else:
-            node.name = node.name.split(
-                '_')[0]+"_timestamp_"+str((time.time()))
+            node.name = node.name.split("_")[0] + "_timestamp_" + str((time.time()))
 
     inputs = copy.deepcopy(fragment1.fragment.graph.input)
     for inp in inputs:
@@ -241,16 +245,25 @@ def stitch_fragments(fragment1: Fragment, fragment2: Fragment, data: np.ndarray)
 
     nodes += newnodes
     # print('end stitching')
-    name = 'stitch'
+    name = "stitch"
     try:
-        newnet = create_onnx_model(fragment1.fragment, nodes=nodes, name=name,
-                                   inputs=inputs, outputs=outputs, initializer=initializer)
-        newnet = onnxoptimizer.optimize(newnet, passes=[
-            'eliminate_nop_transpose',
-            'eliminate_nop_pad',
-            'fuse_consecutive_transposes',
-            'fuse_transpose_into_gemm'
-        ])
+        newnet = create_onnx_model(
+            fragment1.fragment,
+            nodes=nodes,
+            name=name,
+            inputs=inputs,
+            outputs=outputs,
+            initializer=initializer,
+        )
+        newnet = optimize(
+            newnet,
+            passes=[
+                "eliminate_nop_transpose",
+                "eliminate_nop_pad",
+                "fuse_consecutive_transposes",
+                "fuse_transpose_into_gemm",
+            ],
+        )
         change_layers_dimension(newnet)
         return newnet
     except Exception as e:

@@ -171,3 +171,8 @@ _results_with_finetune/
 _results_without_finetune/
 .virtual_documents/
 directory.tar.gz
+
+_results_chest_xray/
+_models_chest_xray/
+train/
+test/

@@ -2,11 +2,11 @@ import torch
 import torch.nn as nn
 from collections import Counter
 
-from src.utilities.load_dataset import load_dataset
-from src.service.finetune.train_model import train_model
-from src.service.finetune.create_optimizer import create_optimizer
-from src.utilities.dataloader_generator import generate_dataloader
-from src.utilities.set_requires_grad_parameters import set_parameter_requires_grad
+from utilities.load_dataset_chest_xray import load_dataset
+from service.finetune.train_model import train_model
+from service.finetune.create_optimizer import create_optimizer
+from utilities.dataloader_generator import generate_dataloader
+from utilities.set_requires_grad_parameters import set_parameter_requires_grad
 
 
 def finetune(model, num_classes=3, num_epochs=3, batch_size=64, val_batch_size=128, feature_extract=True):
